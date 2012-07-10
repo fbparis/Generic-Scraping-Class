@@ -67,48 +67,32 @@ class Scraper {
 	
 	protected function assign_conn(&$mh) {
 		/* First, look in $this->todo for a ready to scrap url */
-		foreach ($this->todo as $url=>$status) if ($status <= 0) {
-			$ch = curl_init($url);
-			curl_setopt($ch,CURLOPT_USERAGENT,$this->user_agent);
-			curl_setopt($ch,CURLOPT_RETURNTRANSFER,true);
-			curl_setopt($ch,CURLOPT_TIMEOUT,$this->timeout);
-			curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
-			curl_setopt($ch,CURLOPT_FOLLOWLOCATION,false);
-			$ret = curl_multi_add_handle($mh,$ch);
-			if (0 === $ret) {
-				$this->todo[$url] = 1 - $status;
-				$this->conns++;
-				$this->debug(">>> $url");
-				return true;
-			} else {
-				$this->debug("Curl error $ret while adding new handle",2);
-				curl_close($ch);
-				return false;
-			}
-		}
+		foreach ($this->todo as $url=>$status) if ($status <= 0) return $this->add_conn($mh,$url,$status);
 		/* If nothing found in $this->todo, try to get one from the input file */
-		if ($url = trim(@fgets($this->fp_in))) {
-			$ch = curl_init($url);
-			curl_setopt($ch,CURLOPT_USERAGENT,$this->user_agent);
-			curl_setopt($ch,CURLOPT_RETURNTRANSFER,true);
-			curl_setopt($ch,CURLOPT_TIMEOUT,$this->timeout);
-			curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
-			curl_setopt($ch,CURLOPT_FOLLOWLOCATION,false);
-			$ret = curl_multi_add_handle($mh,$ch);
-			if (0 === $ret) {
-				$this->todo[$url] = 1;
-				$this->conns++;
-				$this->debug(">>> $url");
-				return true;
-			} else {
-				$this->debug("Curl error $ret while adding new handle",2);
-				$this->todo[$url] = 0;
-				curl_close($ch);
-				return false;
-			}
-		}
+		if ($url = trim(@fgets($this->fp_in))) return $this->add_conn($mh,$url,0);
 		/* Nothing to scrap, return false */
 		return false;
+	}
+	
+	protected function add_conn(&$mh,$url,$status=0) {
+		$ch = curl_init($url);
+		curl_setopt($ch,CURLOPT_USERAGENT,$this->user_agent);
+		curl_setopt($ch,CURLOPT_RETURNTRANSFER,true);
+		curl_setopt($ch,CURLOPT_TIMEOUT,$this->timeout);
+		curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
+		curl_setopt($ch,CURLOPT_FOLLOWLOCATION,false);
+		$ret = curl_multi_add_handle($mh,$ch);
+		if (0 === $ret) {
+			$this->todo[$url] = 1 - $status;
+			$this->conns++;
+			$this->debug(">>> $url");
+			return true;
+		} else {
+			$this->todo[$url] = $status;
+			$this->debug("Curl error $ret while adding new handle",2);
+			curl_close($ch);
+			return false;
+		}
 	}
 	
 	protected function exec_conn(&$mh,&$ch) {
