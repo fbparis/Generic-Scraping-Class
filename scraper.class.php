@@ -6,7 +6,7 @@
 
 	-Implement your own code to discover new urls to scrap in method exec_conn()
 	
-		Tip: Be smart and prevent $this->todo to grow exponentially...
+		Tip: Be smart and prevent $todo to grow exponentially...
 	
 	-Implement your own code to scrap content in method extract_datas()
 	
@@ -22,7 +22,7 @@ class Scraper {
 	public $max_conns = 3; // number of simultaneous connections
 	public $timeout = 30; // in seconds
 	public $debug_level = 0; // 0 = all ; 1 = notices ; 2 = errors
-	public $max_retry = 5; // max retries on 5xx responses
+	public $max_retry = 5; // max retries on 0 and 5xx responses
 	
 	public $output_file = ''; // 1 json encoded object per line will be written
 	public $input_file = ''; // 1 URL to scrap per line, optionnal
@@ -66,9 +66,9 @@ class Scraper {
 	}
 	
 	protected function assign_conn(&$mh) {
-		/* First, look in $this->todo for a ready to scrap url */
+		/* First, look in $todo for a ready to scrap url */
 		foreach ($this->todo as $url=>$status) if ($status <= 0) return $this->add_conn($mh,$url,$status);
-		/* If nothing found in $this->todo, try to get one from the input file */
+		/* If nothing found in $todo, try to get one from the input file */
 		if ($url = trim(@fgets($this->fp_in))) return $this->add_conn($mh,$url,0);
 		/* Nothing to scrap, return false */
 		return false;
@@ -107,7 +107,7 @@ class Scraper {
 		switch ($info['http_code']) {
 			case 200:
 				
-				/* Add code to add other url(s) in $this->todo here */
+				/* Add code to add other url(s) in $todo here */
 				
 				if ($results = $this->extract_datas($html)) {
 					foreach ($results as $i=>$result) {
