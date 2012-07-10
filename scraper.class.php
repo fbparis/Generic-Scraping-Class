@@ -1,7 +1,7 @@
 <?php
 
 /*
-	Generic scrapping class by fbparis@gmail.com
+	Generic scraping class by fbparis@gmail.com
 	Should be ultra fast, permanently running N simultaneous connections
 
 	-Implement your own code to discover new urls to scrap in method exec_conn()
@@ -16,7 +16,7 @@
 
 set_time_limit(0);
 
-class Scrapper {
+class Scraper {
 	/* Public options */
 	public $user_agent = '';
 	public $max_conns = 3; // number of simultaneous connections
@@ -41,7 +41,7 @@ class Scrapper {
 		if ($level >= $this->debug_level) printf("%s\n",$msg);
 	}
 	
-	/* Call this method to start scrapping */
+	/* Call this method to start scraping */
 	public function run() {
 		$this->timer = microtime(true);
 		if (is_readable($this->input_file)) $this->fp_in = @fopen($this->input_file,'r');
