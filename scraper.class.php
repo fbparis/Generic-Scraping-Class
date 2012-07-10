@@ -74,12 +74,14 @@ class Scraper {
 			curl_setopt($ch,CURLOPT_TIMEOUT,$this->timeout);
 			curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
 			curl_setopt($ch,CURLOPT_FOLLOWLOCATION,false);
-			if (0 === curl_multi_add_handle($mh,$ch)) {
+			$ret = curl_multi_add_handle($mh,$ch);
+			if (0 === $ret) {
 				$this->todo[$url] = 1 - $status;
 				$this->conns++;
 				$this->debug(">>> $url");
 				return true;
 			} else {
+				$this->debug("Curl error $ret while adding new handle",2);
 				curl_close($ch);
 				return false;
 			}
@@ -92,12 +94,14 @@ class Scraper {
 			curl_setopt($ch,CURLOPT_TIMEOUT,$this->timeout);
 			curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
 			curl_setopt($ch,CURLOPT_FOLLOWLOCATION,false);
-			if (0 === curl_multi_add_handle($mh,$ch)) {
+			$ret = curl_multi_add_handle($mh,$ch);
+			if (0 === $ret) {
 				$this->todo[$url] = 1;
 				$this->conns++;
 				$this->debug(">>> $url");
 				return true;
 			} else {
+				$this->debug("Curl error $ret while adding new handle",2);
 				$this->todo[$url] = 0;
 				curl_close($ch);
 				return false;
@@ -129,7 +133,7 @@ class Scraper {
 				break;
 			default:
 				$this->debug(sprintf("Error parsing %s (%d)",$info['url'],$info['http_code']),2);
-				if (($info['http_code'] >= 500) && ($status < $this->max_retry)) $this->todo[$info['url']] = -$status;
+				if ((($info['http_code'] >= 500) || ($info['http_code'] == 0)) && ($status < $this->max_retry)) $this->todo[$info['url']] = -$status;
 				return false;
 		}
 		return true;
