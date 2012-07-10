@@ -68,29 +68,40 @@ class Scraper {
 	protected function assign_conn(&$mh) {
 		/* First, look in $this->todo for a ready to scrap url */
 		foreach ($this->todo as $url=>$status) if ($status <= 0) {
-			$this->todo[$url] = 1 - $status;
-			$this->conns++;
-			$this->debug(">>> $url");
 			$ch = curl_init($url);
 			curl_setopt($ch,CURLOPT_USERAGENT,$this->user_agent);
 			curl_setopt($ch,CURLOPT_RETURNTRANSFER,true);
 			curl_setopt($ch,CURLOPT_TIMEOUT,$this->timeout);
 			curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
 			curl_setopt($ch,CURLOPT_FOLLOWLOCATION,false);
-			return (0 === curl_multi_add_handle($mh,$ch));
+			if (0 === curl_multi_add_handle($mh,$ch)) {
+				$this->todo[$url] = 1 - $status;
+				$this->conns++;
+				$this->debug(">>> $url");
+				return true;
+			} else {
+				curl_close($ch);
+				return false;
+			}
 		}
 		/* If nothing found in $this->todo, try to get one from the input file */
 		if ($url = trim(@fgets($this->fp_in))) {
-			$this->todo[$url] = 1;
-			$this->conns++;
-			$this->debug(">>> $url");
 			$ch = curl_init($url);
 			curl_setopt($ch,CURLOPT_USERAGENT,$this->user_agent);
 			curl_setopt($ch,CURLOPT_RETURNTRANSFER,true);
 			curl_setopt($ch,CURLOPT_TIMEOUT,$this->timeout);
 			curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
 			curl_setopt($ch,CURLOPT_FOLLOWLOCATION,false);
-			return (0 === curl_multi_add_handle($mh,$ch));		
+			if (0 === curl_multi_add_handle($mh,$ch)) {
+				$this->todo[$url] = 1;
+				$this->conns++;
+				$this->debug(">>> $url");
+				return true;
+			} else {
+				$this->todo[$url] = 0;
+				curl_close($ch);
+				return false;
+			}
 		}
 		/* Nothing to scrap, return false */
 		return false;
