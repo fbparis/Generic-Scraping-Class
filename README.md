@@ -1,4 +1,4 @@
-Generic-Scrapping-Class
+Generic-Scraping-Class
 =======================
 
-Generic ultra fast scrapping class in PHP
+A basic but ultra fast scraping class in PHP
