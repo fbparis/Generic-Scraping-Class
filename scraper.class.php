@@ -85,6 +85,7 @@ class Scraper {
 			}
 			$this->fp_in = $this->fp_out = $this->fp_errors = null;
 			if (!@file_put_contents($this->recovery_file,serialize($this))) printf("%s\n",serialize($this));
+			$this->done = true; // prevent multiple executions...
 		}
 	}
 	
