@@ -42,7 +42,7 @@ class Scraper {
 	protected $timer = 0;		
 		
 	/* Special stuff for recovering mode */
-	public $restore_mode = false;
+	public $recovery_mode = false;
 	protected $fp_in_offset = 0;
 	protected $revovery_file = null;
 		
@@ -50,7 +50,14 @@ class Scraper {
 		$this->recover_file = $recovery_file ? $recovery_file : __FILE__ . '.recover.inc';
 		register_shutdown_function(array($this, '__destruct'));
 		if (file_exists($this->recovery_file)) {
-			if ($recovery = @unserialize(file_get_contents($this->recover_file))) foreach ($recovery as $k=>$v) $this->$k = $v;
+			$this->debug('Running in recovery mode',1);
+			if ($recovery = @unserialize(file_get_contents($this->recover_file))) {
+				foreach ($recovery as $k=>$v) $this->$k = $v;
+				@unlink($this->recovery_file);
+			} else {
+				$this->debug('Unable to recover datas, exiting',2);
+				exit;
+			}
 		}
 	}
 	
@@ -58,7 +65,7 @@ class Scraper {
 		if (!$this->done) {
 			if (is_resource($this->fp_out)) @fclose($this->fp_out);
 			if (is_resource($this->fp_errors)) @fclose($this->fp_errors);
-			$this->restore_mode = true;
+			$this->recovery_mode = true;
 			foreach ($this->todo as $url=>$status) if ($status > 0) {
 				$this->todo[$url] = 1 - $status;
 			}
@@ -71,8 +78,6 @@ class Scraper {
 			}
 			$this->fp_in = $this->fp_out = $this->fp_errors = null;
 			if (!@file_put_contents($this->recovery_file,serialize($this))) printf("%s\n",serialize($this));
-		} else {
-			@unlink($this->recovery_file);
 		}
 	}
 	
@@ -88,7 +93,7 @@ class Scraper {
 	}
 	
 	public function add_url($url) {
-		if ($this->restore_mode) return true;
+		if ($this->recovery_mode) return true;
 		if (array_key_exists($url,$this->todo)) return false;
 		$this->todo[$url] = 0;
 		return true;
@@ -97,13 +102,13 @@ class Scraper {
 	/* Call this method to start scraping */
 	public function run() {
 		if (!count($this->interfaces)) $this->add_interface();
-		$this->timer = $this->restore_mode ? microtime(true) - $this->timer : microtime(true);
+		$this->timer = $this->recovery_mode ? microtime(true) - $this->timer : microtime(true);
 		if (is_readable($this->input_file)) {
 			$this->fp_in = @fopen($this->input_file,'r');
 			@fseek($this->fp_in,$this->fp_in_offset);
 		}
-		if ($this->output_file) $this->fp_out = @fopen($this->output_file,$this->restore_mode ? 'a' : 'w');
-		if ($this->errors_file) $this->fp_errors = @fopen($this->errors_file,$this->restore_mode ? 'a' : 'w');
+		if ($this->output_file) $this->fp_out = @fopen($this->output_file,$this->recovery_mode ? 'a' : 'w');
+		if ($this->errors_file) $this->fp_errors = @fopen($this->errors_file,$this->recovery_mode ? 'a' : 'w');
 		$mh = curl_multi_init();
 		$this->done = count($this->interfaces) == 0;
 		while (!$this->done) {
