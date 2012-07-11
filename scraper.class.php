@@ -7,6 +7,7 @@
 	-Implement your own code to discover new urls to scrap in method exec_conn()
 	
 		Tip: Be smart and prevent $todo to grow exponentially...
+		Tip: Please avoid endless loops: do not add the same url more than once
 	
 	-Implement your own code to scrap content in method extract_datas()
 	
@@ -28,9 +29,9 @@ class Scraper {
 	
 	public $output_file = ''; // 1 json encoded object per line will be written
 	public $input_file = ''; // 1 URL to scrap per line, optionnal
-	public $todo = array(); // Associative array of urls to scrap: URL => 0 
 	
 	/* Private internal stuff */
+	protected $todo = array();  
 	protected $done = false;
 	protected $conns = array();
 	protected $interfaces = array();
@@ -48,8 +49,14 @@ class Scraper {
 		if ($auto_adjust_speed === null) $auto_adjust_speed = $this->default_auto_adjust_speed;
 		if ($max_sleep_delay === null) $max_sleep_delay = $this->default_max_speed_delay;
 		if ($timeout === null) $timeout = $this->default_timeout;
-		if ($this->conns[$ip] = new ScraperInterface($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout)) return true;
+		if ($this->interfaces[$ip] = new ScraperInterface($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout)) return true;
 		return false;
+	}
+	
+	public function add_url($url) {
+		if (array_key_exists($url,$this->todo)) return false;
+		$this->todo[$url] = 0;
+		return true;
 	}
 	
 	protected function debug($msg,$level=0) {
@@ -61,7 +68,7 @@ class Scraper {
 		if (!count($this->interfaces)) $this->add_interface();
 		$this->timer = microtime(true);
 		if (is_readable($this->input_file)) $this->fp_in = @fopen($this->input_file,'r');
-		$this->fp_out = fopen($this->output_file,'w');
+		if ($this->output_file) $this->fp_out = @fopen($this->output_file,'w');
 		$mh = curl_multi_init();
 		$this->done = count($this->interfaces) == 0;
 		while (!$this->done) {
@@ -71,7 +78,7 @@ class Scraper {
 			usleep(50);			
 		}
 		curl_multi_close($mh);
-		fclose($this->fp_out);
+		if (is_resource($this->fp_out)) @fclose($this->fp_out);
 		if (is_resource($this->fp_in)) @fclose($this->fp_in);
 		$this->debug(sprintf('Done in %d seconds',microtime(true)-$this->timer),1);
 	}
@@ -80,7 +87,7 @@ class Scraper {
 		/* First, look in $todo for a ready to scrap url */
 		foreach ($this->todo as $url=>$status) if ($status <= 0) return $this->add_conn($mh,$url,$status);
 		/* If nothing found in $todo, try to get one from the input file */
-		if ($url = trim(@fgets($this->fp_in))) return $this->add_conn($mh,$url,0);
+		if (is_resource($this->fp_in) && ($url = trim(@fgets($this->fp_in)))) return $this->add_conn($mh,$url,0);
 		/* Nothing to scrap, check if done and return false */
 		if (!count($this->todo) && !count($this->conns)) $this->done = true;
 		return false;
@@ -122,7 +129,7 @@ class Scraper {
 		$info = curl_getinfo($ch);
 		$html = curl_multi_getcontent($ch);
 		curl_multi_remove_handle($mh,$ch);
-		$this->interfaces[$this->conns[$info['url']]]->remove_conn($ch,$this->get_status($info['http_code']));
+		$this->interfaces[$this->conns[$info['url']]]->close_conn($ch,$this->get_status($info['http_code']));
 		unset($this->conns[$info['url']]);
 		$this->debug(sprintf("<<< %s (%d)",$info['url'],$info['http_code']));
 		$status = $this->todo[$info['url']];
@@ -134,7 +141,8 @@ class Scraper {
 				
 				if ($results = $this->extract_datas($html)) {
 					foreach ($results as $i=>$result) {
-						fputs($this->fp_out,json_encode($results[$i]) . "\n");
+						if (is_resource($this->fp_out)) @fputs($this->fp_out,json_encode($results[$i]) . "\n");
+						else printf("%s\n",trim(print_r($result,true)));
 					}
 				}
 				break;
