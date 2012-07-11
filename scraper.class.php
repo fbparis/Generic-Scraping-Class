@@ -18,9 +18,11 @@ set_time_limit(0);
 
 class Scraper {
 	/* Public options */
-	public $user_agent = '';
-	public $max_conns = 3; // number of simultaneous connections
-	public $timeout = 30; // in seconds
+	public $default_user_agent = ''; // default user_agent on an interface, can be an array of strings for more random ;)
+	public $default_max_conns = 1; // default number of simultaneous connections on an interface
+	public $default_auto_adjust_speed = true; // default behaviour of an interface (true/false)
+	public $default_max_sleep_delay = 120; // in seconds
+	public $default_timeout = 30; // in seconds
 	public $debug_level = 0; // 0 = all ; 1 = notices ; 2 = errors
 	public $max_retry = 5; // max retries on 0 and 5xx responses
 	
@@ -29,12 +31,25 @@ class Scraper {
 	public $todo = array(); // Associative array of urls to scrap: URL => 0 
 	
 	/* Private internal stuff */
-	protected $conns = 0;
+	protected $done = false;
+	protected $conns = array();
+	protected $interfaces = array();
 	protected $fp_out = null;
 	protected $fp_in = null;
 	protected $timer = 0;
 		
 	function __construct() {
+	}
+	
+	public function add_interface($ip=0,$user_agent=null,$max_conns=null,$auto_adjust_speed=null,$max_sleep_delay=null,$timeout=null) {
+		if (array_key_exists($ip,$this->conns)) return false;
+		if ($user_agent === null) $user_agent = $this->default_user_agent;
+		if ($max_conns === null) $max_conns = $this->default_max_conns;
+		if ($auto_adjust_speed === null) $auto_adjust_speed = $this->default_auto_adjust_speed;
+		if ($max_sleep_delay === null) $max_sleep_delay = $this->default_max_speed_delay;
+		if ($timeout === null) $timeout = $this->default_timeout;
+		if ($this->conns[$ip] = new ScraperInterface($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout)) return true;
+		return false;
 	}
 	
 	protected function debug($msg,$level=0) {
@@ -43,18 +58,14 @@ class Scraper {
 	
 	/* Call this method to start scraping */
 	public function run() {
+		if (!count($this->interfaces)) $this->add_interface();
 		$this->timer = microtime(true);
 		if (is_readable($this->input_file)) $this->fp_in = @fopen($this->input_file,'r');
 		$this->fp_out = fopen($this->output_file,'w');
 		$mh = curl_multi_init();
-		while (true) {
-			while ($this->conns < $this->max_conns) if (!$this->assign_conn($mh)) {
-				if (!$active && ($this->conns <= 0)) {
-					$this->debug('Exiting');
-					break(2);
-				}
-				break;
-			}
+		$this->done = count($this->interfaces) == 0;
+		while (!$this->done) {
+			while ($this->assign_conn($mh)); 
 			$status = curl_multi_exec($mh,$active);
 			while ($info = curl_multi_info_read($mh)) $this->exec_conn($mh,$info['handle']);
 			usleep(50);			
@@ -70,37 +81,49 @@ class Scraper {
 		foreach ($this->todo as $url=>$status) if ($status <= 0) return $this->add_conn($mh,$url,$status);
 		/* If nothing found in $todo, try to get one from the input file */
 		if ($url = trim(@fgets($this->fp_in))) return $this->add_conn($mh,$url,0);
-		/* Nothing to scrap, return false */
+		/* Nothing to scrap, check if done and return false */
+		if (!count($this->todo) && !count($this->conns)) $this->done = true;
 		return false;
 	}
 	
 	protected function add_conn(&$mh,$url,$status=0) {
-		$ch = curl_init($url);
-		curl_setopt($ch,CURLOPT_USERAGENT,$this->user_agent);
-		curl_setopt($ch,CURLOPT_RETURNTRANSFER,true);
-		curl_setopt($ch,CURLOPT_TIMEOUT,$this->timeout);
-		curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
-		curl_setopt($ch,CURLOPT_FOLLOWLOCATION,false);
-		$ret = curl_multi_add_handle($mh,$ch);
-		if (0 === $ret) {
-			$this->todo[$url] = 1 - $status;
-			$this->conns++;
-			$this->debug(">>> $url");
-			return true;
-		} else {
-			$this->todo[$url] = $status;
-			$this->debug("Curl error $ret while adding new handle",2);
-			curl_close($ch);
-			return false;
+		foreach ($this->interfaces as $k=>$interface) if ($interface->ready()) {
+			// Last used interface is moved to the bottom of the pile 
+			unset($this->interfaces[$k]);
+			$this->interfaces[$k] = $interface;
+			$interface = &$this->interfaces[$k];
+			// Get a connection
+			$ch = $interface->get_conn($url);
+			$ret = curl_multi_add_handle($mh,$ch);
+			if (0 === $ret) {
+				$this->todo[$url] = 1 - $status;
+				$this->conns[$url] = $k;
+				$this->debug(">>> $url");
+				return true;
+			} else {
+				$this->debug("Curl error $ret while adding new handle",2);
+				$interface->close_conn($ch);
+				break;
+			}
 		}
+		/* no available connection */
+		$this->todo[$url] = $status;
+		return false;
+	}
+	
+	protected function get_status($http_code) {
+		if ($http_code == 200) return 'success';
+		if ($http_code == 0) return 'fail';
+		if ($http_code >= 500) return 'fail';
+		return null;
 	}
 	
 	protected function exec_conn(&$mh,&$ch) {
 		$info = curl_getinfo($ch);
 		$html = curl_multi_getcontent($ch);
 		curl_multi_remove_handle($mh,$ch);
-		curl_close($ch);
-		$this->conns--;
+		$this->interfaces[$this->conns[$info['url']]]->remove_conn($ch,$this->get_status($info['http_code']));
+		unset($this->conns[$info['url']]);
 		$this->debug(sprintf("<<< %s (%d)",$info['url'],$info['http_code']));
 		$status = $this->todo[$info['url']];
 		unset($this->todo[$info['url']]);
@@ -117,7 +140,7 @@ class Scraper {
 				break;
 			default:
 				$this->debug(sprintf("Error parsing %s (%d)",$info['url'],$info['http_code']),2);
-				if ((($info['http_code'] >= 500) || ($info['http_code'] == 0)) && ($status < $this->max_retry)) $this->todo[$info['url']] = -$status;
+				if (($this->get_status($info['http_code']) == 'fail') && ($status < $this->max_retry)) $this->todo[$info['url']] = -$status;
 				return false;
 		}
 		return true;
@@ -129,6 +152,88 @@ class Scraper {
 		/* Add code to extract datas here */
 		
 		return count($results) ? $results : false;
+	}
+}
+
+class ScraperInterface {
+	protected $ip = 0;
+	protected $user_agent = '';
+	protected $max_conns = 1;
+	protected $auto_adjust_speed = true;
+	protected $max_sleep_delay = 300;
+	protected $timeout = 30;
+	
+	protected $conns = 0;
+	protected $current_max_conns = 1;
+	protected $sleep_delay = 0;
+	protected $last_conn = 0;
+	protected $failed = false;
+	
+	function _construct($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout) {
+		$this->ip = $ip;
+		$this->user_agent = $user_agent;
+		$this->max_conns = 1;
+		$this->auto_adjust_speed = $auto_adjust_speed;
+		$this->max_sleep_delay = $max_sleep_delay;
+		$this->timeout = $timeout;
+		
+		$this->current_max_conns = $this->auto_adjust_speed ? 1 : $this->max_conns;
+	}
+	
+	public function ready() {
+		return ($this->conns < $this->current_max_conns) && (($this->sleep_delay == 0) || (((microtime(true) - $this->last_conn)) >= $this->sleep_delay));
+	}
+	
+	public function get_conn($url) {
+		$ch = curl_init($url);
+		if ($this->ip) curl_setopt($ch,CURLOPT_INTERFACE,$this->ip);
+		$ua = is_array($this->user_agent) && count($this->user_agent) ? $this->user_agent[mt_rand(0,count($this->user_agent) - 1)] : $this->user_agent;
+		if (is_string($ua)) curl_setopt($ch,CURLOPT_USERAGENT,$ua);
+		curl_setopt($ch,CURLOPT_RETURNTRANSFER,true);
+		curl_setopt($ch,CURLOPT_TIMEOUT,$this->timeout);
+		curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
+		curl_setopt($ch,CURLOPT_FOLLOWLOCATION,false);
+		$this->conns++;
+		if ($this->auto_adjust_speed && ($this->current_max_conns == 1)) $this->last_conn = microtime(true);
+		return $ch;
+	}
+	
+	public function close_conn(&$ch,$status=null) {
+		$this->conns--;
+		@curl_close($ch);
+		if (!$this->auto_adjust_speed) return true;
+		switch ($status) {
+			case 'fail':
+				return $this->trigger_fail();
+			case 'success':
+				return $this->trigger_success();
+			default:
+				return true;
+		}
+	}
+	
+	protected function trigger_fail() {
+		if (!$this->failed) {
+			$this->failed = true;
+			return true;
+		}
+		if ($this->current_max_conns > 1) {
+			$this->current_max_conns--;
+		} else {
+			if ($this->sleep_delay == 0) $this->sleep_delay = 1;
+			else $this->sleep_delay = min($this->max_sleep_delay,$sleep_delay * 2);
+		}
+		return true;
+	}
+	
+	protected function trigger_success() {
+		$this->failed = false;
+		if ($this->sleep_delay > 0) {
+			$this->sleep_delay = round($this->sleep_delay / 3);
+		} else if ($this->current_max_conns < $this->max_conns) {
+			$this->current_max_conns++;
+		}
+		return true;
 	}
 }
 
