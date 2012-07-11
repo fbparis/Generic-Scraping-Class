@@ -37,9 +37,40 @@ class Scraper {
 	protected $interfaces = array();
 	protected $fp_out = null;
 	protected $fp_in = null;
-	protected $timer = 0;
+	protected $timer = 0;		
 		
-	function __construct() {
+	/* Special stuff for recovering mode */
+	public $restore_mode = false;
+	protected $fp_in_offset = 0;
+	protected $revovery_file = null;
+		
+	function __construct($recovery_file=null) {
+		$this->recover_file = $recovery_file ? $recovery_file : __FILE__ . '.recover.inc';
+		register_shutdown_function(array($this, '__destruct'));
+		if (file_exists($this->recovery_file)) {
+			return @unserialize(file_get_contents($this->recovery_file));
+		}
+	}
+	
+	function __destruct() {
+		if (!$this->done) {
+			if (is_resource($this->fp_out)) @fclose($this->fp_out);
+			$this->restore_mode = true;
+			foreach ($this->todo as $url=>$status) if ($status > 0) {
+				$this->todo[$url] = 1 - $status;
+			}
+			$this->interfaces = array();
+			$this->conns = array();
+			$this->timer = microtime(true) - $this->timer;
+			if (is_resource($this->fp_in)) {
+				$this->fp_in_offset = ftell($this->fp_in);
+				@fclose($this->fp_in);
+			}
+			$this->fp_in = $this->fp_out = null;
+			if (!@file_put_contents($this->recovery_file,serialize($this))) printf("%s\n",serialize($this));
+		} else {
+			@unlink($this->recovery_file);
+		}
 	}
 	
 	public function add_interface($ip=0,$user_agent=null,$max_conns=null,$auto_adjust_speed=null,$max_sleep_delay=null,$timeout=null) {
@@ -54,6 +85,7 @@ class Scraper {
 	}
 	
 	public function add_url($url) {
+		if ($this->restore_mode) return true;
 		if (array_key_exists($url,$this->todo)) return false;
 		$this->todo[$url] = 0;
 		return true;
@@ -62,9 +94,12 @@ class Scraper {
 	/* Call this method to start scraping */
 	public function run() {
 		if (!count($this->interfaces)) $this->add_interface();
-		$this->timer = microtime(true);
-		if (is_readable($this->input_file)) $this->fp_in = @fopen($this->input_file,'r');
-		if ($this->output_file) $this->fp_out = @fopen($this->output_file,'w');
+		$this->timer = $this->restore_mode ? microtime(true) - $this->timer : microtime(true);
+		if (is_readable($this->input_file)) {
+			$this->fp_in = @fopen($this->input_file,'r');
+			@fseek($this->fp_in,$this->fp_in_offset);
+		}
+		if ($this->output_file) $this->fp_out = @fopen($this->output_file,$this->restore_mode ? 'a' : 'w');
 		$mh = curl_multi_init();
 		$this->done = count($this->interfaces) == 0;
 		while (!$this->done) {
@@ -76,7 +111,7 @@ class Scraper {
 		curl_multi_close($mh);
 		if (is_resource($this->fp_out)) @fclose($this->fp_out);
 		if (is_resource($this->fp_in)) @fclose($this->fp_in);
-		$this->debug(sprintf('Done in %d seconds',microtime(true)-$this->timer),1);
+		$this->debug(sprintf('Done in %.3f seconds',microtime(true)-$this->timer),1);
 	}
 	
 	protected function debug($msg,$level=0) {
@@ -133,7 +168,7 @@ class Scraper {
 		unset($this->conns[$info['url']]);
 		$this->debug(sprintf("<<< %s (%d)",$info['url'],$info['http_code']));
 		$status = $this->todo[$info['url']];
-		unset($this->todo[$info['url']]);
+		$ret = true;
 		switch ($info['http_code']) {
 			case 200:
 				
@@ -147,11 +182,12 @@ class Scraper {
 				}
 				break;
 			default:
+				$ret = false;
 				$this->debug(sprintf("Error parsing %s (%d)",$info['url'],$info['http_code']),2);
 				if (($this->get_status($info['http_code']) == 'fail') && ($status < $this->max_retry)) $this->todo[$info['url']] = -$status;
-				return false;
 		}
-		return true;
+		unset($this->todo[$info['url']]);
+		return $ret;
 	}
 	
 	protected function extract_datas(&$html) {
