@@ -51,8 +51,8 @@ class Scraper {
 		if (file_exists($this->recovery_file)) {
 			$this->debug('Running in recovery mode',1);
 			if ($recovery = @unserialize(file_get_contents($this->recovery_file))) {
-				foreach ($recovery as $k=>$v) $this->$k = $v;
 				@unlink($this->recovery_file);
+				foreach ($recovery as $k=>$v) $this->$k = $v;
 			} else {
 				$this->debug('Unable to recover datas, exiting',2);
 				$this->done = true; // prevent backup
