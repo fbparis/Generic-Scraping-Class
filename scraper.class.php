@@ -50,7 +50,7 @@ class Scraper {
 		$this->recovery_file = $recovery_file ? $recovery_file : __FILE__ . '.recover.inc';
 		if (file_exists($this->recovery_file)) {
 			$this->debug('Running in recovery mode',1);
-			if ($recovery = @unserialize(file_get_contents($this->recover_file))) {
+			if ($recovery = @unserialize(file_get_contents($this->recovery_file))) {
 				foreach ($recovery as $k=>$v) $this->$k = $v;
 				@unlink($this->recovery_file);
 			} else {
