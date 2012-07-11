@@ -47,7 +47,7 @@ class Scraper {
 		if ($user_agent === null) $user_agent = $this->default_user_agent;
 		if ($max_conns === null) $max_conns = $this->default_max_conns;
 		if ($auto_adjust_speed === null) $auto_adjust_speed = $this->default_auto_adjust_speed;
-		if ($max_sleep_delay === null) $max_sleep_delay = $this->default_max_speed_delay;
+		if ($max_sleep_delay === null) $max_sleep_delay = $this->default_max_sleep_delay;
 		if ($timeout === null) $timeout = $this->default_timeout;
 		if ($this->interfaces[$ip] = new ScraperInterface($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout)) return true;
 		return false;
@@ -57,10 +57,6 @@ class Scraper {
 		if (array_key_exists($url,$this->todo)) return false;
 		$this->todo[$url] = 0;
 		return true;
-	}
-	
-	protected function debug($msg,$level=0) {
-		if ($level >= $this->debug_level) printf("%s\n",$msg);
 	}
 	
 	/* Call this method to start scraping */
@@ -81,6 +77,10 @@ class Scraper {
 		if (is_resource($this->fp_out)) @fclose($this->fp_out);
 		if (is_resource($this->fp_in)) @fclose($this->fp_in);
 		$this->debug(sprintf('Done in %d seconds',microtime(true)-$this->timer),1);
+	}
+	
+	protected function debug($msg,$level=0) {
+		if ($level >= $this->debug_level) printf("%s\n",$msg);
 	}
 	
 	protected function assign_conn(&$mh) {
@@ -177,7 +177,7 @@ class ScraperInterface {
 	protected $last_conn = 0;
 	protected $failed = false;
 	
-	function _construct($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout) {
+	function __construct($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout) {
 		$this->ip = $ip;
 		$this->user_agent = $user_agent;
 		$this->max_conns = 1;
