@@ -44,10 +44,10 @@ class Scraper {
 	/* Special stuff for recovering mode */
 	public $recovery_mode = false;
 	protected $fp_in_offset = 0;
-	protected $revovery_file = null;
+	protected $recovery_file = null;
 		
 	function __construct($recovery_file=null) {
-		$this->recover_file = $recovery_file ? $recovery_file : __FILE__ . '.recover.inc';
+		$this->recovery_file = $recovery_file ? $recovery_file : __FILE__ . '.recover.inc';
 		if (file_exists($this->recovery_file)) {
 			$this->debug('Running in recovery mode',1);
 			if ($recovery = @unserialize(file_get_contents($this->recover_file))) {
