@@ -48,12 +48,6 @@ class Scraper {
 		
 	function __construct($recovery_file=null) {
 		$this->recover_file = $recovery_file ? $recovery_file : __FILE__ . '.recover.inc';
-		register_shutdown_function(array($this, '__destruct'));
-		if (function_exists('pcntl_signal')) {
-			$this->debug('System interruptions will be intercepted!',1);	
-			pcntl_signal(SIGINT,array($this,'__destruct'));
-			pcntl_signal(SIGKILL,array($this,'__destruct'));
-		} 
 		if (file_exists($this->recovery_file)) {
 			$this->debug('Running in recovery mode',1);
 			if ($recovery = @unserialize(file_get_contents($this->recover_file))) {
@@ -61,9 +55,16 @@ class Scraper {
 				@unlink($this->recovery_file);
 			} else {
 				$this->debug('Unable to recover datas, exiting',2);
+				$this->done = true; // prevent backup
 				exit;
 			}
 		}
+		register_shutdown_function(array($this, '__destruct'));
+		if (function_exists('pcntl_signal')) {
+			$this->debug('System interruptions will be intercepted!',1);	
+			pcntl_signal(SIGINT,array($this,'__destruct'));
+			pcntl_signal(SIGKILL,array($this,'__destruct'));
+		} 
 	}
 	
 	function __destruct() {
