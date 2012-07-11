@@ -46,12 +46,12 @@ class Scraper {
 	protected $fp_in_offset = 0;
 	protected $recovery_file = null;
 		
-	function __construct($recovery_file=null) {
-		$this->recovery_file = $recovery_file ? $recovery_file : __FILE__ . '.recover.inc';
+	function __construct() {
+		$this->recovery_file = __FILE__ . '.recover.inc';
 		if (file_exists($this->recovery_file)) {
 			$this->debug('Running in recovery mode',1);
 			if ($recovery = @unserialize(file_get_contents($this->recovery_file))) {
-				@unlink($this->recovery_file);
+				if (!@unlink($this->recovery_file)) $this->debug('Unable to delete recovery file!',2);
 				foreach ($recovery as $k=>$v) $this->$k = $v;
 			} else {
 				$this->debug('Unable to recover datas, exiting',2);
