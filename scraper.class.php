@@ -59,15 +59,15 @@ class Scraper {
 				exit;
 			}
 		}
-		register_shutdown_function(array($this, '__destruct'));
+		register_shutdown_function(array($this, '_destruct'));
 		if (function_exists('pcntl_signal')) {
 			$this->debug('System interruptions will be intercepted!',1);	
-			pcntl_signal(SIGINT,array($this,'__destruct'));
-			pcntl_signal(SIGKILL,array($this,'__destruct'));
+			pcntl_signal(SIGINT,array($this,'_destruct'));
+			pcntl_signal(SIGKILL,array($this,'_destruct'));
 		} 
 	}
 	
-	function __destruct() {
+	function _destruct() {
 		if (!$this->done) {
 			if (is_resource($this->fp_out)) @fclose($this->fp_out);
 			if (is_resource($this->fp_errors)) @fclose($this->fp_errors);
