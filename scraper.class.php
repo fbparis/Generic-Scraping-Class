@@ -48,7 +48,7 @@ class Scraper {
 		$this->recover_file = $recovery_file ? $recovery_file : __FILE__ . '.recover.inc';
 		register_shutdown_function(array($this, '__destruct'));
 		if (file_exists($this->recovery_file)) {
-			return @unserialize(file_get_contents($this->recovery_file));
+			if ($recovery = @unserialize(file_get_contents($this->recover_file))) foreach ($recovery as $k=>$v) $this->$k = $v;
 		}
 	}
 	
