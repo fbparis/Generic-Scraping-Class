@@ -51,10 +51,8 @@ class Scraper {
 		register_shutdown_function(array($this, '__destruct'));
 		if (function_exists('pcntl_signal')) {
 			$this->debug('System interruptions will be intercepted!',1);	
-			pcntl_signal(SIGTERM,array($this,'__destruct'));
 			pcntl_signal(SIGINT,array($this,'__destruct'));
 			pcntl_signal(SIGKILL,array($this,'__destruct'));
-			pcntl_signal(SIGHUP,array($this,'__destruct'));
 		} 
 		if (file_exists($this->recovery_file)) {
 			$this->debug('Running in recovery mode',1);
