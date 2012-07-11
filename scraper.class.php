@@ -22,13 +22,14 @@ class Scraper {
 	public $default_user_agent = ''; // default user_agent on an interface, can be an array of strings for more random ;)
 	public $default_max_conns = 1; // default number of simultaneous connections on an interface
 	public $default_auto_adjust_speed = true; // default behaviour of an interface (true/false)
-	public $default_max_sleep_delay = 120; // in seconds
+	public $default_max_sleep_delay = 120; // in seconds, used only if auto_adjust_speed is true
 	public $default_timeout = 30; // in seconds
 	public $debug_level = 0; // 0 = all ; 1 = notices ; 2 = errors
 	public $max_retry = 5; // max retries on 0 and 5xx responses
 	
-	public $output_file = ''; // 1 json encoded object per line will be written
-	public $input_file = ''; // 1 URL to scrap per line, optionnal
+	public $output_file = ''; // Optional, 1 json encoded object per line will be written
+	public $input_file = ''; // Optional, 1 URL to scrap per line
+	public $errors_file = ''; // Optional, URLS that have not been scraped ; each line is formated as: URL HTTP_CODE
 	
 	/* Private internal stuff */
 	protected $todo = array();  
@@ -37,6 +38,7 @@ class Scraper {
 	protected $interfaces = array();
 	protected $fp_out = null;
 	protected $fp_in = null;
+	protected $fp_errors = null;
 	protected $timer = 0;		
 		
 	/* Special stuff for recovering mode */
@@ -55,6 +57,7 @@ class Scraper {
 	function __destruct() {
 		if (!$this->done) {
 			if (is_resource($this->fp_out)) @fclose($this->fp_out);
+			if (is_resource($this->fp_errors)) @fclose($this->fp_errors);
 			$this->restore_mode = true;
 			foreach ($this->todo as $url=>$status) if ($status > 0) {
 				$this->todo[$url] = 1 - $status;
@@ -66,7 +69,7 @@ class Scraper {
 				$this->fp_in_offset = ftell($this->fp_in);
 				@fclose($this->fp_in);
 			}
-			$this->fp_in = $this->fp_out = null;
+			$this->fp_in = $this->fp_out = $this->fp_errors = null;
 			if (!@file_put_contents($this->recovery_file,serialize($this))) printf("%s\n",serialize($this));
 		} else {
 			@unlink($this->recovery_file);
@@ -100,6 +103,7 @@ class Scraper {
 			@fseek($this->fp_in,$this->fp_in_offset);
 		}
 		if ($this->output_file) $this->fp_out = @fopen($this->output_file,$this->restore_mode ? 'a' : 'w');
+		if ($this->errors_file) $this->fp_errors = @fopen($this->errors_file,$this->restore_mode ? 'a' : 'w');
 		$mh = curl_multi_init();
 		$this->done = count($this->interfaces) == 0;
 		while (!$this->done) {
@@ -109,6 +113,7 @@ class Scraper {
 			usleep(50);			
 		}
 		curl_multi_close($mh);
+		if (is_resource($this->fp_errors)) @fclose($this->fp_errors);
 		if (is_resource($this->fp_out)) @fclose($this->fp_out);
 		if (is_resource($this->fp_in)) @fclose($this->fp_in);
 		$this->debug(sprintf('Done in %.3f seconds',microtime(true)-$this->timer),1);
@@ -184,7 +189,10 @@ class Scraper {
 			default:
 				$ret = false;
 				$this->debug(sprintf("Error parsing %s (%d)",$info['url'],$info['http_code']),2);
-				if (($this->get_status($info['http_code']) == 'fail') && ($status < $this->max_retry)) $this->todo[$info['url']] = -$status;
+				if ($this->get_status($info['http_code']) == 'fail') {
+					if ($status < $this->max_retry) $this->todo[$info['url']] = -$status;
+					else if (is_resource($this->fp_errors)) @fputs($this->fp_errors,sprintf("%s %d\n",$info['url'],$info['http_code']));
+				} 
 		}
 		unset($this->todo[$info['url']]);
 		return $ret;
