@@ -337,7 +337,7 @@ class ScraperInterface {
 	function __construct($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout,$proxy=null,$proxy_userpwd=null) {
 		$this->ip = $ip;
 		$this->user_agent = $user_agent;
-		$this->max_conns = 1;
+		$this->max_conns = $max_conns;
 		$this->auto_adjust_speed = $auto_adjust_speed;
 		$this->max_sleep_delay = $max_sleep_delay;
 		$this->timeout = $timeout;
