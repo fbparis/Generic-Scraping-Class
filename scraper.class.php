@@ -107,13 +107,14 @@ class Scraper {
 	}
 	
 	public function add_interface($ip=0,$user_agent=null,$max_conns=null,$auto_adjust_speed=null,$max_sleep_delay=null,$timeout=null,$proxy=null,$proxy_userpwd=null) {
-		if (array_key_exists($ip,$this->conns)) return false;
+		$key = $proxy ? "$ip-$proxy" : $ip;
+		if (array_key_exists($key,$this->conns)) return false;
 		if ($user_agent === null) $user_agent = $this->default_user_agent;
 		if ($max_conns === null) $max_conns = $this->default_max_conns;
 		if ($auto_adjust_speed === null) $auto_adjust_speed = $this->default_auto_adjust_speed;
 		if ($max_sleep_delay === null) $max_sleep_delay = $this->default_max_sleep_delay;
 		if ($timeout === null) $timeout = $this->default_timeout;
-		if ($this->interfaces[$ip] = new ScraperInterface($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout,$proxy,$proxy_userpwd)) return true;
+		if ($this->interfaces[$key] = new ScraperInterface($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout,$proxy,$proxy_userpwd)) return true;
 		return false;
 	}
 	
