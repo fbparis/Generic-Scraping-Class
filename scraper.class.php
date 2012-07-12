@@ -106,14 +106,14 @@ class Scraper {
 		}
 	}
 	
-	public function add_interface($ip=0,$user_agent=null,$max_conns=null,$auto_adjust_speed=null,$max_sleep_delay=null,$timeout=null) {
+	public function add_interface($ip=0,$user_agent=null,$max_conns=null,$auto_adjust_speed=null,$max_sleep_delay=null,$timeout=null,$proxy=null,$proxy_userpwd=null) {
 		if (array_key_exists($ip,$this->conns)) return false;
 		if ($user_agent === null) $user_agent = $this->default_user_agent;
 		if ($max_conns === null) $max_conns = $this->default_max_conns;
 		if ($auto_adjust_speed === null) $auto_adjust_speed = $this->default_auto_adjust_speed;
 		if ($max_sleep_delay === null) $max_sleep_delay = $this->default_max_sleep_delay;
 		if ($timeout === null) $timeout = $this->default_timeout;
-		if ($this->interfaces[$ip] = new ScraperInterface($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout)) return true;
+		if ($this->interfaces[$ip] = new ScraperInterface($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout,$proxy,$proxy_userpwd)) return true;
 		return false;
 	}
 	
@@ -324,6 +324,8 @@ class ScraperInterface {
 	protected $auto_adjust_speed = true;
 	protected $max_sleep_delay = 300;
 	protected $timeout = 30;
+	protected $proxy = null;
+	protected $proxy_userpwd = null;
 	
 	protected $conns = 0;
 	protected $current_max_conns = 1;
@@ -331,13 +333,15 @@ class ScraperInterface {
 	protected $last_conn = 0;
 	protected $failed = false;
 	
-	function __construct($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout) {
+	function __construct($ip,$user_agent,$max_conns,$auto_adjust_speed,$max_sleep_delay,$timeout,$proxy=null,$proxy_userpwd=null) {
 		$this->ip = $ip;
 		$this->user_agent = $user_agent;
 		$this->max_conns = 1;
 		$this->auto_adjust_speed = $auto_adjust_speed;
 		$this->max_sleep_delay = $max_sleep_delay;
 		$this->timeout = $timeout;
+		$this->proxy = $proxy;
+		$this->proxy_userpwd = $proxy_userpwd;
 		
 		$this->current_max_conns = $this->auto_adjust_speed ? 1 : $this->max_conns;
 	}
@@ -352,6 +356,8 @@ class ScraperInterface {
 		$ua = is_array($this->user_agent) && count($this->user_agent) ? $this->user_agent[mt_rand(0,count($this->user_agent) - 1)] : $this->user_agent;
 		if (is_string($ua)) curl_setopt($ch,CURLOPT_USERAGENT,$ua);
 		if (is_array($headers) && count($headers)) curl_setopt($ch,CURLOPT_HTTPHEADER,$headers);
+		if ($this->proxy) curl_setopt($ch,CURLOPT_PROXY,$this->proxy);
+		if ($this->proxy && $this->proxy_userpwd) curl_setopt($ch,CURLOPT_PROXYUSRPWD,$this->proxy_userpwd);
 		curl_setopt($ch,CURLOPT_HEADER,true);
 		curl_setopt($ch,CURLOPT_RETURNTRANSFER,true);
 		curl_setopt($ch,CURLOPT_TIMEOUT,$this->timeout);
