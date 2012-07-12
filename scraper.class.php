@@ -2,17 +2,13 @@
 
 /*
 	Generic scraping class by fbparis@gmail.com
-	Should be ultra fast, permanently running N simultaneous connections
+	Should be ultra fast, permanently running N simultaneous connections on N' interfaces
 
-	-Implement your own code to discover new urls to scrap in method exec_conn()
+	-Implement your own code to discover and scrap urls and use register_success_function('your_function')
 	
-		Tip: Be smart and prevent $todo to grow exponentially...
-		Tip: Please avoid endless loops: do not add the same url more than once
-	
-	-Implement your own code to scrap content in method extract_datas()
-	
-		Tip: You can use simple_html_dom class to handle complex scraps
-		Can be found here: http://sourceforge.net/projects/simplehtmldom/
+		Tip: 	Maybe you want to avoid endless loops: do not add the same url more than once
+		Tip: 	You can use simple_html_dom class to handle complex scraps
+				Can be found here: http://sourceforge.net/projects/simplehtmldom/
 */
 
 set_time_limit(0);
