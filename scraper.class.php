@@ -34,6 +34,7 @@ class Scraper {
 	public $redirect_codes = array(301,302,303,307);
 	
 	/* Private internal stuff */
+	protected $basefile = '';
 	protected $input_file = '';
 	protected $output_file = '';
 	protected $todo_file = '';
@@ -59,7 +60,7 @@ class Scraper {
 	protected $fp_in_offset = 0;
 		
 	function __construct() {
-		$this->recovery_file = __FILE__ . '.recover.inc';
+		$this->recovery_file = $_SERVER['PATH_TRANSLATED'] . '.recover.inc';
 		if (file_exists($this->recovery_file)) {
 			$this->debug('Running in recovery mode',1);
 			if ($recovery = @unserialize(file_get_contents($this->recovery_file))) {
@@ -71,11 +72,12 @@ class Scraper {
 				exit;
 			}
 		}
+		$this->basefile = $_SERVER['PATH_TRANSLATED'];
 		$this->memory_limit = intval(ini_get('memory_limit')) * 1024 * 1024;
-		$this->input_file = __FILE__ . '.input';
-		$this->output_file = __FILE__ . '.output';
-		$this->todo_file = __FILE__ . '.todo';
-		$this->errors_file = __FILE__ . '.errors';
+		$this->input_file = $this->basefile . '.input';
+		$this->output_file = $this->basefile . '.output';
+		$this->todo_file = $this->basefile . '.todo';
+		$this->errors_file = $this->basefile . '.errors';
 		register_shutdown_function(array($this, '_destruct'));
 		if (function_exists('pcntl_signal')) {
 			$this->debug('System interruptions will be intercepted!',1);	
@@ -276,13 +278,15 @@ class Scraper {
 	
 	protected function exec_conn(&$mh,&$ch) {
 		$info = curl_getinfo($ch);
-		list($html,$headers) = split("\r\n\r\n",curl_multi_getcontent($ch),2);
+		$url = $info['url'];
+		$http_code = $info['http_code'];
+		list($headers,$html) = split("\r\n\r\n",curl_multi_getcontent($ch),2);
 		curl_multi_remove_handle($mh,$ch);
-		$response_status = $this->get_status($info['http_code']);
-		$this->interfaces[$this->conns[$info['url']]]->close_conn($ch,$response_status);
-		unset($this->conns[$info['url']]);
-		$this->debug(sprintf("<<< %s (%d)",$info['url'],$info['http_code']));
-		$status = $this->todo[$info['url']];
+		$response_status = $this->get_status($http_code);
+		$this->interfaces[$this->conns[$url]]->close_conn($ch,$response_status);
+		unset($this->conns[$url]);
+		$this->debug(sprintf("<<< %s (%d)",$url,$http_code));
+		$status = $this->todo[$url];
 		switch ($response_status) {
 			case 'success':
 				$results = $this->success_function ? @call_user_func($this->success_function,&$this,&$html,&$headers,&$info) : null;
@@ -299,19 +303,21 @@ class Scraper {
 				$this->remove_url($url);
 				break;
 			case 'fail':
-				if ($status < $this->max_retry) $this->todo[$info['url']] = -$status;
+				if ($status < $this->max_retry) $this->todo[$url] = -$status;
 				else {
-					if (is_resource($this->fp_errors)) @fputs($this->fp_errors,sprintf("%s %d\n",$info['url'],$info['http_code']));
+					if (is_resource($this->fp_errors)) @fputs($this->fp_errors,sprintf("%s %d\n",$url,$http_code));
 					$this->remove_url($url);
 				}
 				break;
 			default:
 		}
-		if (!$response_status == 'success') return true;
-		else {
-			$this->debug(sprintf("*** %s has returned a %d http code",$info['url'],$info['http_code']),1);
-			return false;
+		if (file_exists('.STOP')) {
+			$this->debug('STOP signal received, exiting',1);
+			exit;
 		}
+		if ($response_status == 'success') return true;
+		$this->debug(sprintf("*** %s has returned a %d http code",$url,$http_code),1);
+		return false;
 	}
 }
 
