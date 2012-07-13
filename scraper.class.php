@@ -322,7 +322,10 @@ class Scraper {
 			}
 		}
 		$this->basefile = $_SERVER['PATH_TRANSLATED'];
-		$this->memory_limit = intval(ini_get('memory_limit')) * 1024 * 1024;
+		$this->memory_limit = intval(ini_get('memory_limit'));
+		if (strpos(ini_get('memory_limit'),'K') !== false) $this->memory_limit *= 1024; 
+		elseif (strpos(ini_get('memory_limit'),'M') !== false) $this->memory_limit *= 1024 * 1024; 
+		elseif (strpos(ini_get('memory_limit'),'G') !== false) $this->memory_limit *= 1024 * 1024 * 1024; 
 		$this->input_file = $this->basefile . '.input';
 		$this->output_file = $this->basefile . '.output';
 		$this->todo_file = $this->basefile . '.todo';
