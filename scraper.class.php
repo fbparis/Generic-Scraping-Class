@@ -2,26 +2,77 @@
 
 /*
 	Generic scraping class by fbparis@gmail.com
-	Should be ultra fast, permanently running N simultaneous connections on N' interfaces
+	Check the latest version here: https://github.com/fbparis/Generic-Scraping-Class
+	-Should be ultra fast, permanently running N simultaneous connections on N' interfaces
+	-An "Auto Adjust Speed" mode is available to automaticaly set the speed according to errors/success responses
+	-If for any reason your script crashs, you won't loose anything and can restart from the last url scraped!
 	
-	Nothing to change, just call it, register your success_function and or redirect_function and run!
+	Nothing to change, just call it, optionaly register your success_function and/or redirect_function and run!
 	
-	See README and comments
+	If {SCRIPTNAME} is your script name (where you include this class and call it), so you can create a file named
+	{SCRIPTNAME}.input with one URL per line, or one URL followed by a space and a serialized array of headers per line to use it
+	as input file.
+	
+	Also, these files may be created by the class:
+	-{SCRIPTNAME}.errors: one URL followed by space and http response code for each urls that have been failed more than $max_retry times
+	-{SCRIPTNAME}.output: one json_encoded object per line (results of the scrap)
+	-{SCRIPTNAME}.todo: used by the class to replace $todo when memory usage become to high
+	-{SCRIPTNAME}.recover.inc: used by the class to backup its internal state on error/interruption
+	
+	Optionaly, a {SCRIPTNAME}.input.orig can be create during the process to backup original input file when a todo file has to replace it.
+	
+	Empty files will be removed after the scraping is done.
+	
+	Basic example:
+	
+	$S = new Scraper;
+	$S->add_url('http://example.com/');	
+	$S->run();
+	
+	In this example, one url will be scraped and the resulting html will be json encoded in a file {SCRIPTNAME}.output
+	
+	NOTE ON SAVED / RETRIED ERRORS
+		Only URLS returning a HTTP response code in $fail_codes will be retried / saved in {SCRIPTNAME}.errors
+		Maybe you want to retry / save other ones, to do so, simply add some error codes in $fail_codes before calling method run().
+		For example:
+		
+			$S->fail_codes[] = 404;
+			
+	
+	NOTE ON SCRIPT INTERRUPTION
+		If pcntl extension is not activated in your PHP configuration, stopping the script with CTRL-C won't be intercepted and
+		recovery mode won't be activated.
+		So there's a simple way to stop a running script using this Class:
+		Just crate a .STOP file in the directory where the script is running (touch .STOP) and it will exit by saving its internal state
+		
+		
+	NOTE ON AUTO_ADJUST_SPEED MODE
+		If $auto_adjust_speed is set to true for an interface, the class will start scraping with 1 connexion on this interface.
+		Connexion count will increase if no errors are encoutered, otherwise it will decrease, or if only one connexion,
+		it will slow down (by increasing a delay beetween connexions).
+		A basic behaviour has been coded, you can take a look on it in the close_conn() method of the ScraperInterface class.
+		
+		If $auto_adjust_speed is set to false, the class will directly and always scrap with $max_conns simultaneous connexions.
 
+	
+	See comments for the rest of the documentation ;-)
 */
 
 set_time_limit(0);
 
 class Scraper {
 	/* Public options */
+	/* These options can be overwritten when you call add_interface() method: */
 	public $default_user_agent = ''; // default user_agent on an interface, can be an array of strings for more random ;)
 	public $default_max_conns = 1; // default number of simultaneous connections on an interface
 	public $default_auto_adjust_speed = true; // default behaviour of an interface (true/false)
 	public $default_max_sleep_delay = 120; // in seconds, used only if auto_adjust_speed is true
 	public $default_timeout = 30; // in seconds
+	
+	/* These are global options for the class */
 	public $debug_level = 0; // 0 = all ; 1 = notices ; 2 = errors
-	public $max_retry = 5; // max retries on 0 and 5xx responses
-	public $max_memory_usage_ratio = 0.8; // if $todo_file is set, new urls will be written in file if memory usage exceeds this ratio
+	public $max_retry = 5; // max retries on error, when max has been reached for an url, it's added to the error file
+	public $max_memory_usage_ratio = 0.8; // new urls to scrap will be added to a file when memory usage exceeds this ratio
 	
 	/* Public advanced stuff */
 	public $success_codes = array(200); // on which http response codes we have a successful scrap
@@ -49,6 +100,7 @@ class Scraper {
 	protected $todo_swaps = 0;
 	protected $success_function = null;
 	protected $redirect_function = null;
+	protected $run_done = false;
 		
 	/* Special stuff for recovering mode */
 	public $recovery_mode = false;
@@ -56,7 +108,26 @@ class Scraper {
 			
 	/* PUBLIC API */
 	
-	/* Add an interface */
+	/* 
+		Add an interface 
+		
+		If you only have one IP and are ok with the default parameters (see public properties of the class above),
+		you don't need to call this method because method run() will call it for you if no interfaces have been set.
+		
+		Even if you have one IP you may want to use this method to quickly override default options, or if you prefer using a proxy.
+		
+		add_interface() accepts these parameters:
+		-$ip can be 0 for the current IP or any value accepted by curl_setopt for CURLOPT_INTERFACE
+		-$user_agent can be a user agent string, or an array of user agent strings (then one will be chosen randomly each time)
+		-$max_conns is the maximum number of simultaneous connexions allowed on this interface
+		-$auto_adjust_speed can be true or false, see above for a description of this feature
+		-$max_sleep_delay, in seconds, will be used only if $auto_adjust_speed is true
+		-$timeout, in seconds
+		-$proxy is a proxy ip or host, any value accepted by curl_setopt for CURLOPT_PROXY
+		-$proxy_userpwd is a formated string "username:password" (see curl_setopt for CURLOPT_PROXYUSERPWD)
+		
+		You can add only one interface per (IP-PROXY)
+	*/
 	public function add_interface($ip=0,$user_agent=null,$max_conns=null,$auto_adjust_speed=null,$max_sleep_delay=null,$timeout=null,$proxy=null,$proxy_userpwd=null) {
 		$key = $proxy ? "$ip-$proxy" : $ip;
 		if (array_key_exists($key,$this->conns)) return false;
@@ -69,25 +140,30 @@ class Scraper {
 		return false;
 	}
 	
-	/* Add an URL to scrap */
+	/* 
+		Add an URL to scrap 
+		
+		You can add an URl to the todo list by calling this method.
+		Optionaly you can pass an array of headers which will be used to retrieve this URL.
+		
+		Examples: 
+		
+			add_url('http://www.example.com');
+			add_url('http://www.example.com/somepage.html',array('Referer: http://www.google.com/','Cookie: test=1'));
+			
+		Note that in recovery mode, every calls to this method until run() is called again will be ignored,
+		so you don't have to rewrite your script when restarting it...
+	*/
 	public function add_url($url,$headers=null) {
 		if ($this->recovery_mode) return true;
 		if (array_key_exists($url,$this->todo)) return false;
 		$headers = is_array($headers) ? $headers : null;
-		if (is_resource($this->fp_todo) && (memory_get_peak_usage(true) / $this->memory_limit > $this->max_memory_usage_ratio)) {
+		if (is_resource($this->fp_todo) && ((memory_get_peak_usage(true) / $this->memory_limit) > $this->max_memory_usage_ratio)) {
 			if (@fputs($this->fp_todo,sprintf("%s %s\n",$url,serialize($headers)))) return true;
 		}
 		$this->todo[$url] = 0;
 		$this->headers[$url] = $headers;
 		return true;
-	}
-	
-	/* Remove an URL from the todo list */
-	public function remove_url($url) {
-		if (array_key_exists($url,$this->todo)) {
-			unset($this->todo[$url]);
-			unset($this->headers[$url]);
-		}
 	}
 	
 	/* 
@@ -118,6 +194,8 @@ class Scraper {
 			...
 			return $results;
 		}
+		
+		Note that if you don't register any success function, the default behaviour will be to record all the html for each url scraped.
 	*/
 	public function register_success_function($function) {
 		if (function_exists($function)) {
@@ -157,6 +235,11 @@ class Scraper {
 	
 	/* Call this method to start scraping */
 	public function run() {
+		/* This method can only be called once in a script due to recovery mode limitations */
+		if ($this->run_called) {
+			$this->debug('Method run() can only be called once in a script!',2);
+			exit;
+		}
 		/* If no interfaces have been added, add a default one with the current IP */
 		if (!count($this->interfaces)) $this->add_interface();
 		/* Recording the total time is fun */
@@ -175,10 +258,6 @@ class Scraper {
 		}
 		if (!$this->fp_errors = @fopen($this->errors_file,$this->recovery_mode ? 'ab' : 'wb')) {
 			$this->debug(sprintf('Errors file "%s" not writable! Exiting',$this->errors_file),2);
-			exit;
-		}
-		if (!$this->fp_todo = @fopen($this->todo_file,$this->recovery_mode ? 'ab' : 'wb')) {
-			$this->debug(sprintf('Todo file "%s" not writable! Exiting',$this->todo_file),2);
 			exit;
 		}
 		$mh = curl_multi_init();
@@ -204,6 +283,12 @@ class Scraper {
 			unlink($this->output_file); // cleaning a little
 		}
 		if (is_resource($this->fp_in)) @fclose($this->fp_in);
+		/* Cleaning again and restore input file if needed */
+		if ($this->todo_swaps > 0) {
+			unlink($this->input_file);
+			if (file_exists($this->input_file . '.orig')) rename($this->input_file . '.orig',$this->input_file);
+		}
+		$this->run_done = true;
 		$this->debug(sprintf('Done in %.3f seconds',microtime(true)-$this->timer),1);
 	}
 	
@@ -242,6 +327,10 @@ class Scraper {
 		$this->output_file = $this->basefile . '.output';
 		$this->todo_file = $this->basefile . '.todo';
 		$this->errors_file = $this->basefile . '.errors';
+		if (!$this->fp_todo = @fopen($this->todo_file,$this->recovery_mode ? 'ab' : 'wb')) {
+			$this->debug(sprintf('Todo file "%s" not writable! Exiting',$this->todo_file),2);
+			exit;
+		}
 		register_shutdown_function(array($this, '_destruct'));
 		if (function_exists('pcntl_signal')) {
 			$this->debug('System interruptions will be intercepted!',1);	
@@ -279,6 +368,14 @@ class Scraper {
 		}
 	}
 
+	/* Remove an URL from the todo list */
+	protected function remove_url($url) {
+		if (array_key_exists($url,$this->todo)) {
+			unset($this->todo[$url]);
+			unset($this->headers[$url]);
+		}
+	}
+	
 	/* Find an URL to scrap */
 	protected function assign_conn(&$mh) {
 		/* First, look in $todo for a ready to scrap url */
@@ -299,10 +396,12 @@ class Scraper {
 				if (is_resource($this->fp_in)) {
 					@fclose($this->fp_in);
 					$this->fp_in = null;
-					if (!rename($this->input_file,$this->input_file . '.' . $this->todo_swaps)) {
-						$this->debug('Unable to rename input file! Exiting',2);
-						exit;
-					}
+					if ($this->todo_swaps == 0) {
+						if (!rename($this->input_file,$this->input_file . '.orig')) {
+							$this->debug('Unable to rename input file! Exiting',2);
+							exit;
+						}
+					} else unlink($this->input_file);
 					$this->todo_swaps++;
 				}
 				if (!rename($this->todo_file,$this->input_file)) {
@@ -376,7 +475,7 @@ class Scraper {
 		$status = $this->todo[$url];
 		switch ($response_status) {
 			case 'success':
-				if ($results = $this->success_function ? call_user_func($this->success_function,&$this,&$html,&$headers,&$info) : null) {
+				if ($results = $this->success_function ? call_user_func($this->success_function,&$this,&$html,&$headers,&$info) : $html) {
 					if (!is_array($results)) $results = array($results);
 					foreach ($results as $i=>$result) {
 						if (is_resource($this->fp_out)) @fputs($this->fp_out,json_encode($results[$i]) . "\n");
@@ -397,6 +496,7 @@ class Scraper {
 				}
 				break;
 			default:
+				$this->remove_url($url);
 		}
 		/* Useful to stop the script if pcntl extension is not loaded */
 		if (file_exists('.STOP')) {
@@ -409,6 +509,7 @@ class Scraper {
 	}
 }
 
+/* Class used internaly to reprensent and manage interfaces */
 class ScraperInterface {
 	protected $ip = 0;
 	protected $user_agent = '';
@@ -438,10 +539,12 @@ class ScraperInterface {
 		$this->current_max_conns = $this->auto_adjust_speed ? 1 : $this->max_conns;
 	}
 	
+	/* Return true if interface is ready to accept new connexions, false otherwise */
 	public function ready() {
 		return ($this->conns < $this->current_max_conns) && (($this->sleep_delay == 0) || (((microtime(true) - $this->last_conn)) >= $this->sleep_delay));
 	}
 	
+	/* Create a new connexion with curl and return it */
 	public function get_conn($url,$headers=null) {
 		$ch = curl_init($url);
 		if ($this->ip) curl_setopt($ch,CURLOPT_INTERFACE,$this->ip);
@@ -460,27 +563,33 @@ class ScraperInterface {
 		return $ch;
 	}
 	
+	/* Close a connexion and adjust behaviour if $auto_adjust_speed is true */
 	public function close_conn(&$ch,$status=null) {
 		$this->conns--;
 		@curl_close($ch);
 		if (!$this->auto_adjust_speed) return true;
 		switch ($status) {
 			case 'fail':
+				/* Do something only on consecutive fails */
 				if (!$this->failed) {
 					$this->failed = true;
 					break;
 				}
 				if ($this->current_max_conns > 1) {
+					/* Reduce $max_conns by 1 if several simultaneous conns */
 					$this->current_max_conns--;
 				} else {
+					/* Or add/increase delay beetween connexions if only 1 connexion is active */
 					if ($this->sleep_delay == 0) $this->sleep_delay = 1;
 					else $this->sleep_delay = min($this->max_sleep_delay,$sleep_delay * 2);
 				}
 				break;
 			case 'success':
 				if ($this->sleep_delay > 0) {
+					/* Decrease delay beetween connexions, if some */
 					$this->sleep_delay = round($this->sleep_delay / 3);
 				} else if (!$this->failed && ($this->current_max_conns < $this->max_conns)) {
+					/* Or, on consecutive successes only, increase the number of simultaneous conns */
 					$this->current_max_conns++;
 				}
 				$this->failed = false;
