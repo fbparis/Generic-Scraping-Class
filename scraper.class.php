@@ -482,7 +482,10 @@ class Scraper {
 					if (!is_array($results)) $results = array($results);
 					foreach ($results as $i=>$result) {
 						if (is_resource($this->fp_out)) @fputs($this->fp_out,json_encode($results[$i]) . "\n");
-						else printf("%s\n",trim(print_r($result,true)));
+						else {
+							$this->debug('Unable to write results to output file! Exiting',2);
+							exit;
+						}
 					}
 				}
 				$this->remove_url($url);
