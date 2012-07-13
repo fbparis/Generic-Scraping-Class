@@ -316,6 +316,13 @@ class Scraper {
 		}
 		/* Nothing to scrap, check if done and return false */
 		if (!count($this->todo) && !count($this->conns)) $this->done = true;
+		/* Useful to stop the script if pcntl extension is not loaded */
+		if (!$this->done && file_exists('.STOP')) {
+			$this->debug('STOP signal received, exiting',1);
+			print_r($this->todo);
+			print_r($this->conns);
+			exit;
+		}
 		return false;
 	}
 	
