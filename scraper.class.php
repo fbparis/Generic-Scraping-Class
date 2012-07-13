@@ -236,7 +236,7 @@ class Scraper {
 	/* Call this method to start scraping */
 	public function run() {
 		/* This method can only be called once in a script due to recovery mode limitations */
-		if ($this->run_called) {
+		if ($this->run_done) {
 			$this->debug('Method run() can only be called once in a script!',2);
 			exit;
 		}
