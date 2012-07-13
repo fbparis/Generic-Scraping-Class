@@ -478,12 +478,12 @@ class ScraperInterface {
 				}
 				break;
 			case 'success':
-				$this->failed = false;
 				if ($this->sleep_delay > 0) {
 					$this->sleep_delay = round($this->sleep_delay / 3);
-				} else if ($this->current_max_conns < $this->max_conns) {
+				} else if (!$this->failed && ($this->current_max_conns < $this->max_conns)) {
 					$this->current_max_conns++;
 				}
+				$this->failed = false;
 				break;
 		}
 	}
