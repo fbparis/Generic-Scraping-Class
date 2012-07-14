@@ -266,10 +266,18 @@ class Scraper {
 		/* No more need for $recovery_mode at this point */
 		$this->recovery_mode = false;
 		while (!$this->done) {
-			while ($this->assign_conn($mh)); 
-			$status = curl_multi_exec($mh,$active);
-			while ($info = curl_multi_info_read($mh)) $this->exec_conn($mh,$info['handle']);
-			usleep(50);	// save your CPU
+			while ($this->assign_conn($mh)) usleep(10);
+			do { 
+				$rv = curl_multi_exec($mh,$still_running); 
+				usleep(10);	
+			} while ($rv == CURLM_CALL_MULTI_PERFORM); 
+			if (-1 != curl_multi_select($mh)) {
+				while ($info = curl_multi_info_read($mh)) {
+					$this->exec_conn($mh,$info['handle']);
+					usleep(10);
+				}
+			}
+			usleep(10);
 		}
 		curl_multi_close($mh);
 		clearstatcache();
