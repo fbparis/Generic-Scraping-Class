@@ -437,6 +437,10 @@ class Scraper {
 			$interface = &$this->interfaces[$k];
 			// Get a connection
 			$ch = $interface->get_conn($url,$this->headers[$url]);
+			if ($ch === false) {
+				$this->debug('Error initializing a connection',1);
+				break;
+			}
 			$ret = curl_multi_add_handle($mh,$ch);
 			if (0 === $ret) {
 				$this->todo[$url] = 1 - $status;
@@ -553,6 +557,7 @@ class ScraperInterface {
 	/* Create a new connexion with curl and return it */
 	public function get_conn($url,$headers=null) {
 		$ch = curl_init($url);
+		if ($ch === false) return false;
 		if ($this->ip) curl_setopt($ch,CURLOPT_INTERFACE,$this->ip);
 		$ua = is_array($this->user_agent) && count($this->user_agent) ? $this->user_agent[mt_rand(0,count($this->user_agent) - 1)] : $this->user_agent;
 		if (is_string($ua)) curl_setopt($ch,CURLOPT_USERAGENT,$ua);
