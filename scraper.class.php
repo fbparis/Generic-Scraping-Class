@@ -578,7 +578,6 @@ class ScraperInterface {
 		curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
 		curl_setopt($ch,CURLOPT_FOLLOWLOCATION,false);
 		$this->conns++;
-		if ($this->auto_adjust_speed && ($this->current_max_conns == 1)) $this->last_conn = microtime(true);
 		return $ch;
 	}
 	
@@ -587,6 +586,7 @@ class ScraperInterface {
 		$this->conns--;
 		@curl_close($ch);
 		if (!$this->auto_adjust_speed) return true;
+		if ($this->current_max_conns == 1) $this->last_conn = microtime(true);
 		switch ($status) {
 			case 'fail':
 				/* Do something only on consecutive fails */
@@ -600,7 +600,7 @@ class ScraperInterface {
 				} else {
 					/* Or add/increase delay beetween connexions if only 1 connexion is active */
 					if ($this->sleep_delay == 0) $this->sleep_delay = 1;
-					else $this->sleep_delay = min($this->max_sleep_delay,$sleep_delay * 2);
+					else $this->sleep_delay = min($this->max_sleep_delay,$this->sleep_delay * 2);
 				}
 				break;
 			case 'success':
