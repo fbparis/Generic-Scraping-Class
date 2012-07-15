@@ -507,8 +507,11 @@ class Scraper {
 				$this->remove_url($url);
 				break;
 			case 'fail':
-				if ($status < $this->max_retry) $this->todo[$url] = -$status;
-				else {
+				if ($status < $this->max_retry) {
+					/* Move this url on the end of the todo list to retry it later */
+					unset($this->todo[$url]);
+					$this->todo[$url] = -$status;
+				} else {
 					if (is_resource($this->fp_errors)) @fputs($this->fp_errors,sprintf("%s %d\n",$url,$http_code));
 					$this->remove_url($url);
 				}
@@ -589,19 +592,15 @@ class ScraperInterface {
 		if ($this->current_max_conns == 1) $this->last_conn = microtime(true);
 		switch ($status) {
 			case 'fail':
-				/* Do something only on consecutive fails */
-				if (!$this->failed) {
-					$this->failed = true;
-					break;
-				}
 				if ($this->current_max_conns > 1) {
 					/* Reduce $max_conns by 1 if several simultaneous conns */
 					$this->current_max_conns--;
-				} else {
-					/* Or add/increase delay beetween connexions if only 1 connexion is active */
-					if ($this->sleep_delay == 0) $this->sleep_delay = 1;
+				} else if ($this->failed) {
+					/* Or add/increase delay beetween connexions on consecutive fails */
+					if ($this->sleep_delay == 0) $this->sleep_delay = 5;
 					else $this->sleep_delay = min($this->max_sleep_delay,$this->sleep_delay * 2);
 				}
+				$this->failed = true;
 				break;
 			case 'success':
 				if ($this->sleep_delay > 0) {
