@@ -413,8 +413,8 @@ class Scraper {
 							exit;
 						}
 					} else unlink($this->input_file);
-					$this->todo_swaps++;
 				}
+				$this->todo_swaps++;
 				if (!rename($this->todo_file,$this->input_file)) {
 					$this->debug('Unable to rename todo file! Exiting',2);
 					exit;
