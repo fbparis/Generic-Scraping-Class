@@ -75,9 +75,14 @@ class Scraper {
 	public $max_memory_usage_ratio = 0.8; // new urls to scrap will be added to a file when memory usage exceeds this ratio
 	
 	/* Public advanced stuff */
-	public $success_codes = array(200); // on which http response codes we have a successful scrap
-	public $fail_codes = array(0,118,204,300,310,500,501,502,503,504,505,507,509); // on which http response codes we want to retry later
-	public $redirect_codes = array(301,302,303,307); // on which http response code we have an url redirection
+	public $success_codes = array();
+	public $fail_codes = array();
+	public $redirect_codes = array();
+	
+	/* Default status per http response code */
+	protected $default_success_codes = array(200); // on which http response codes we have a successful scrap
+	protected $default_fail_codes = array(0,118,204,300,310,500,501,502,503,504,505,507,509); // on which http response codes we want to retry later
+	protected $default_redirect_codes = array(301,302,303,307); // on which http response code we have an url redirection
 	
 	/* Private internal stuff */
 	protected $basefile = '';
@@ -330,6 +335,9 @@ class Scraper {
 			}
 		}
 		$this->basefile = $_SERVER['PATH_TRANSLATED'];
+		$this->success_codes = $this->default_success_codes; 
+		$this->fail_codes = $this->default_fail_codes;
+		$this->redirect_codes = $this->default_redirect_codes;
 		$this->memory_limit = intval(ini_get('memory_limit'));
 		if (strpos(ini_get('memory_limit'),'K') !== false) $this->memory_limit *= 1024; 
 		elseif (strpos(ini_get('memory_limit'),'M') !== false) $this->memory_limit *= 1024 * 1024; 
