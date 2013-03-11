@@ -446,6 +446,10 @@ class Scraper {
 	
 	/* Find an available connexion to scrap an URL */
 	protected function add_conn(&$mh,$url,$headers=null,$status=0) {
+		if (array_key_exists($url, $this->conns)) {
+			$this->debug("*** Skipping $url (duplicate entry)");
+			return false;
+		}
 		foreach ($this->interfaces as $k=>$interface) if ($interface->ready()) {
 			// Last used interface is moved to the bottom of the pile 
 			unset($this->interfaces[$k]);
@@ -462,7 +466,7 @@ class Scraper {
 				$this->todo[$url] = 1 - $status;
 				$this->headers[$url] = $headers;
 				$this->conns[$url] = $k;
-				$this->debug(">>> $url");
+				$this->debug(">>> $url [conn=$k]");
 				return true;
 			} else {
 				$this->debug("Curl error $ret while adding new handle",2);
