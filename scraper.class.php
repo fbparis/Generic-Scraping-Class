@@ -466,7 +466,7 @@ class Scraper {
 				$this->todo[$url] = 1 - $status;
 				$this->headers[$url] = $headers;
 				$this->conns[$url] = $k;
-				$this->debug(">>> $url [conn=$k]");
+				$this->debug(">>> $url [interface=$k]");
 				return true;
 			} else {
 				$this->debug("Curl error $ret while adding new handle",2);
